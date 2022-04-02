@@ -4,7 +4,15 @@ MAX_STEP = 10000
 ϵ = 1.0e-5
 α = 0.005
 
-function set!(; maxit::Int=10000, epsilon::Float64=1.0e-5, alpha::Float64=0.1)
+"""
+set!(; maxit::Int=10000, epsilon::Float64=1.0e-5, alpha::Float64=0.1)
+
+    set inner parameters
+    maxit is maximum iteration step
+    epsilon is stop condition of the iteration
+    alpha is factor to reduce the step length of each iteration
+"""
+function set!(; maxit::Int=10000, epsilon::Float64=1.0e-5, alpha::Float64=0.005)
     global MAX_STEP = maxit
     global ϵ = epsilon
     global α = alpha

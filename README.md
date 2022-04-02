@@ -30,3 +30,11 @@ The return values are like:
 The program first solve the equation to get `ray parameter p`,
 and then get the `horitonzal distance x` and `travel time t`.
 `l` means the layer on which the ray reflect or became guide wave.
+
+## Tips
+
+There are artifacts between $\alpha$, $\epsilon$ and MAX_STEP.
+
+- To run faster, set a larger $\alpha$ and/or larger $\epsilon$
+- When `MAX_STEP` triggerd, consider setting smaller $\alpha$
+- use internal function `SeismicRayTrace.set!` to change these parameters
