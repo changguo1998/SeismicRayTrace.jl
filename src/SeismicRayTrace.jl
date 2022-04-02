@@ -31,7 +31,7 @@ function _refraction_raytrace(x0::Float64, h::AbstractVector, v::AbstractVector)
         return x0 / sqrt(x0^2 + h[1]^2) / v[1]
     end
     maxv = maximum(v)
-    p = 0.5 / maxv
+    p = 0.0
     step = 1
     while abs(_refraction_X(p, h, v) - x0) > ϵ && step < MAX_STEP
         Δp = α * (x0 - _refraction_X(p, h, v)) / _refraction_DpX(p, h, v)
