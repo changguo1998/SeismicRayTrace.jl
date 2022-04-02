@@ -4,7 +4,7 @@ MAX_STEP = 10000
 ϵ = 1.0e-5
 α = 0.005
 
-function set!(; maxit::Int = 10000, epsilon::Float64 = 1.0e-5, alpha::Float64 = 0.1)
+function set!(; maxit::Int=10000, epsilon::Float64=1.0e-5, alpha::Float64=0.1)
     global MAX_STEP = maxit
     global ϵ = epsilon
     global α = alpha
@@ -40,11 +40,22 @@ function _refraction_raytrace(x0::Float64, h::AbstractVector, v::AbstractVector)
     end
     if step == MAX_STEP
         printstyled("MAX_STEP triggered, parameters:\nx0:", x0, "\nmodel_layer: ", join(string.(h), ' '),
-                    "\nmodel_vel:", join(string.(v), ' '), "\n"; color = :yellow)
+                    "\nmodel_vel:", join(string.(v), ' '), "\n"; color=:yellow)
     end
     return p
 end
 
+"""
+raytrace(depth1, depth2, Δ, model_depth, model_velocity, method)
+
+    calculate travel time between two points in a layerd model
+
+    depth1, depth2 is depth of two points
+    Δ is horitonzal distance between these points
+    model_depth and model_velocity should be vector
+    method is a vector of `String`, in which can be any of refraction, reflection, guide
+        if you want all type of phase, it can be reduced to ["all"]
+"""
 function raytrace(dep1::Float64, dep2::Float64, Δ::Float64, model_depth::Vector{Float64},
                   model_velocity::Vector{Float64}, method::Vector{T}) where {T<:AbstractString}
     # check parameter
@@ -70,10 +81,10 @@ function raytrace(dep1::Float64, dep2::Float64, Δ::Float64, model_depth::Vector
         v = tvel[i1-1:i2]
         p0 = _refraction_raytrace(Δ, h, v)
         if isnan(p0)
-            push!(result, (x = Δ, t = Δ / v[1], p = 1 / v[1], l = 0, type = "refraction"))
+            push!(result, (x=Δ, t=Δ / v[1], p=1 / v[1], l=0, type="refraction"))
         else
             push!(result,
-                  (x = _refraction_X(p0, h, v), t = _refraction_T(p0, h, v), p = p0, l = 0, type = "refraction"))
+                  (x=_refraction_X(p0, h, v), t=_refraction_T(p0, h, v), p=p0, l=0, type="refraction"))
         end
     end
     if "reflection" in method || "all" in method
@@ -91,14 +102,10 @@ function raytrace(dep1::Float64, dep2::Float64, Δ::Float64, model_depth::Vector
                 continue
             end
             p0 = _refraction_raytrace(Δ, h, v)
-            # if isnan(p0)
-            #     push!(result, (x = Δ, t = Δ / v[1], p = 1 / v[1], l = 0, type = "refraction"))
-            # else
             push!(result,
-                  (x = _refraction_X(p0, h, v), t = _refraction_T(p0, h, v), p = p0,
-                   l = il > splitid + 2 ? il - 2 : il - 1,
-                   type = "reflection"))
-            # end
+                  (x=_refraction_X(p0, h, v), t=_refraction_T(p0, h, v), p=p0,
+                   l=il > splitid + 2 ? il - 2 : il - 1,
+                   type="reflection"))
         end
     end
     if "guide" in method || "all" in method
@@ -141,10 +148,18 @@ function raytrace(dep1::Float64, dep2::Float64, Δ::Float64, model_depth::Vector
             t1 = _refraction_T(p0, h1, v1)
             t2 = _refraction_T(p0, h2, v2)
             t3 = (Δ - x1 - x2) * p0
-            push!(result, (x = Δ, t = t1 + t2 + t3, p = p0, l = il > splitid + 2 ? il - 2 : il - 1, type = "guide"))
+            push!(result, (x=Δ, t=t1 + t2 + t3, p=p0, l=il > splitid + 2 ? il - 2 : il - 1, type="guide"))
         end
     end
     return result
 end
 
+function raytrace(dep1::Real, dep2::Real, Δ::Real, model_depth::Vector{<:Real},
+                  model_velocity::Vector{<:Real}, method::Union{AbstractString,Vector{<:AbstractString}})
+    if typeof(method) <: AbstractString
+        method = [method]
+    end
+    return raytrace(Float64(dep1), Float64(dep2), Float64(Δ), Float64.(model_depth),
+                    Float64.(model_velocity), String.(method))
+end
 end
