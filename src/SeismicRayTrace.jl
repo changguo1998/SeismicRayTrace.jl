@@ -41,10 +41,19 @@ function _refraction_raytrace(x0::Float64, h::AbstractVector, v::AbstractVector)
     maxv = maximum(v)
     p = 0.0
     step = 1
+    global α
+    α0 = α
     while abs(_refraction_X(p, h, v) - x0) > ϵ && step < MAX_STEP
-        Δp = α * (x0 - _refraction_X(p, h, v)) / _refraction_DpX(p, h, v)
-        p += min(1 / maxv - p - ϵ, max(-p + ϵ, Δp))
-        step += 1
+        Δp = α0 * (x0 - _refraction_X(p, h, v)) / _refraction_DpX(p, h, v)
+        if Δp <= -p || Δp >= 1 / maxv - p
+            α0 /= 2.0
+        else
+            p += Δp
+            step += 1
+            if α0 < α
+                α0 *= 2.0
+            end
+        end
     end
     if step == MAX_STEP
         printstyled("MAX_STEP triggered, parameters:\nx0:", x0, "\nmodel_layer: ", join(string.(h), ' '),
