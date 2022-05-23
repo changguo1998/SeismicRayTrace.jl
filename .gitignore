@@ -25,3 +25,8 @@ Manifest.toml
 
 # Formatter setting
 .JuliaFormatter.toml
+
+# backup config file
+.gitignore
+.gcbakup
+.gcbaksearchignore
