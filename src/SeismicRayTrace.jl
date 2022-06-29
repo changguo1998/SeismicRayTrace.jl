@@ -76,6 +76,9 @@ raytrace(depth1, depth2, Δ, model_depth, model_velocity, method)
 function raytrace(dep1::Float64, dep2::Float64, Δ::Float64, model_depth::Vector{Float64},
                   model_velocity::Vector{Float64}, method::Vector{T}) where {T<:AbstractString}
     # check parameter
+    if min(dep1, dep2) < minimum(model_depth)
+        error("the two depth must be not less than the minimum of model_depth")
+    end
     if findlast(<=(dep1), model_depth) == findlast(<=(dep2), model_depth)
         splitid = findlast(<=(dep1), model_depth)
         tdep = [model_depth[1] - 0.5; model_depth[1:splitid]; (dep1 + dep2) / 2.0; model_depth[splitid+1:end]]
