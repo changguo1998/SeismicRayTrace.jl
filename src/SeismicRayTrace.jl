@@ -1,5 +1,5 @@
 module SeismicRayTrace
-export raytrace
+export raytrace, raytrace_fastest, raytrace_guide
 MAX_STEP = 100000
 ϵ = 1.0e-5
 α = 0.1
@@ -17,10 +17,17 @@ set!(; maxit::Int=100000, epsilon::Float64=1.0e-5, alpha::Float64=0.1)
     epsilon is stop condition of the iteration
     alpha is factor to reduce the step length of each iteration
 """
-function set!(; maxit::Int=100000, epsilon::Float64=1.0e-5, alpha::Float64=0.1)
-    global MAX_STEP = maxit
-    global ϵ = epsilon
-    global α = alpha
+function set!(; maxit::Int=NaN, epsilon::Float64=NaN, alpha::Float64=NaN)
+    global MAX_STEP, ϵ, α
+    if !isnan(maxit)
+        MAX_STEP = maxit
+    end
+    if !isnan(epsilon)
+        ϵ = epsilon
+    end
+    if !isnan(alpha)
+        α = alpha
+    end
     return nothing
 end
 
@@ -32,8 +39,35 @@ function _refraction_DpX(p::Float64, h::AbstractVector, v::AbstractVector)
     return sum(@.(v * h / (1.0 - p^2 * v^2)^(1.5)))
 end
 
+function _refraction_D2pX(p::Float64, h::AbstractVector, v::AbstractVector)
+    return 3.0 * p * sum(@.(v^3 * h / (1.0 - p^2 * v^2)^(2.5)))
+end
+
 function _refraction_T(p::Float64, h::AbstractVector, v::AbstractVector)
     return sum(@.(h / (v * sqrt(1.0 - p^2 * v^2))))
+end
+
+function _refraction_DpT(p::Float64, h::AbstractVector, v::AbstractVector)
+    return p * sum(@.(v * h / (1.0 - p^2 * v^2)^(1.5)))
+end
+
+function _refraction_D2pT(p::Float64, h::AbstractVector, v::AbstractVector)
+    return sum(@.(v * h * (1.0 + 2.0 * p^2 * v^2) / (1.0 - p^2 * v^2)^(2.5)))
+end
+
+# function _refraction_D2tX(p::Float64, h::AbstractVector, v::AbstractVector)
+#     y′ = _refraction_DpT(p, h, v)
+#     x′ = _refraction_DpX(p, h, v)
+#     y′′ = _refraction_D2pT(p, h, v)
+#     x′′ = _refraction_D2pX(p, h, v)
+#     return (y′′ * x′ - x′′ * y′) / x′′^3
+# end
+function _refraction_Dp_TpoverXp(p::Float64, h::AbstractVector, v::AbstractVector)
+    y′ = _refraction_DpT(p, h, v)
+    x′ = _refraction_DpX(p, h, v)
+    y′′ = _refraction_D2pT(p, h, v)
+    x′′ = _refraction_D2pX(p, h, v)
+    return (y′′ * x′ - x′′ * y′) / x′^2
 end
 
 function _refraction_raytrace(x0::Float64, h::AbstractVector, v::AbstractVector)
@@ -65,6 +99,36 @@ function _refraction_raytrace(x0::Float64, h::AbstractVector, v::AbstractVector)
                     "\nmvel:", join(string.(v), ' '), "\n"; color=:yellow)
     end
     return p
+end
+
+function _guide_raytrace(x0::Float64, v0::Float64, h::AbstractVector, v::AbstractVector)
+    p0 = _refraction_raytrace(x0, h, v)
+    p = p0
+    step = 1
+    global α
+    α0 = α
+    while abs(_refraction_DpT(p, h, v) / _refraction_DpX(p, h, v) - 1.0 / v0) > ϵ && step < MAX_STEP
+        # println("p: ", p, ", X: ", _refraction_X(p, h, v), ", T: ", _refraction_T(p, h, v), ", DpT/DpX: ",
+        #         _refraction_DpT(p, h, v) / _refraction_DpX(p, h, v))
+        δp = α0 * (1.0 / v0 - _refraction_DpT(p, h, v) / _refraction_DpX(p, h, v)) / _refraction_Dp_TpoverXp(p, h, v)
+        if (δp <= -p) || (δp >= (p0 - p))
+            α0 /= 2.0
+        else
+            p += δp
+            step += 1
+            if α0 < α
+                α0 *= 2.0
+            end
+        end
+    end
+    return p
+end
+
+function _guide_T(p::Float64, x0::Float64, v0::Float64, h::AbstractVector, v::AbstractVector)
+    x = _refraction_X(p, h, v)
+    t1 = _refraction_T(p, h, v)
+    t2 = (x0 - x) / v0
+    return t1 + t2
 end
 
 function _layerid(h::Vector{Float64}, h0::Float64, dep::Float64)
@@ -162,8 +226,16 @@ function _cal_time(h, v, x0)
     return (p=p, t=t, x=xt)
 end
 
+function _cal_guide(h, v, x0, v0)
+    p = _guide_raytrace(x0, v0, h, v)
+    t = _guide_T(p, x0, v0, h, v)
+    xt = x0
+    return (p=p, t=t, x=xt)
+end
+
+# * core
 function raytrace(dep1::Float64, dep2::Float64, Δ::Float64, mdep::Vector{Float64}, mvel::VecOrMat{Float64},
-                  path::Vector{Vector{Int}}, pol::Vector{Vector{Int}}) where {T<:AbstractString}
+                  path::Vector{Vector{Int}}, pol::Vector{Vector{Int}})
     d1 = min(dep1, dep2)
     d2 = max(dep1, dep2)
     (h, v, i1, i2, newlayer) = _splitmodel(d1, d2, mdep, mvel)
@@ -175,7 +247,7 @@ function raytrace(dep1::Float64, dep2::Float64, Δ::Float64, mdep::Vector{Float6
 end
 
 function raytrace(dep1::Float64, dep2::Float64, Δ::Float64, mdep::Vector{Float64}, mvel::VecOrMat{Float64},
-                  path::Vector{Int}, pol::Vector{Int}) where {T<:AbstractString}
+                  path::Vector{Int}, pol::Vector{Int})
     d1 = min(dep1, dep2)
     d2 = max(dep1, dep2)
     (h, v, i1, i2, newlayer) = _splitmodel(d1, d2, mdep, mvel)
@@ -184,9 +256,99 @@ function raytrace(dep1::Float64, dep2::Float64, Δ::Float64, mdep::Vector{Float6
     return _cal_time(l, w, Δ)
 end
 
-function raytrace(dep1::Real, dep2::Real, Δ::Real, mdep::Vector{<:Real}, mvel::VecOrMat{<:Real},
-                  path::Vector{<:Integer}, pol::Vector{<:Integer})
+function raytrace_guide(dep1::Float64, dep2::Float64, Δ::Float64, mdep::Vector{Float64}, mvel::Vector{Float64},
+    layer::Vector{Int})
+d1 = min(dep1, dep2)
+d2 = max(dep1, dep2)
+(h, v, i1, i2, newlayer) = _splitmodel(d1, d2, mdep, mvel)
+return map(layer) do nl
+path = Int[nl]
+pol = Int[1, 1]
+np = _new_path(path, newlayer, i1, i2)
+(l, w) = _eqmodel(h, v, np, pol)
+v0 = (nl == 1) ? mvel[1] : max(mvel[nl-1], mvel[nl])
+_cal_guide(l, w, Δ, v0)
+end
+end
+
+function raytrace_guide(dep1::Float64, dep2::Float64, Δ::Float64, mdep::Vector{Float64}, mvel::Vector{Float64},
+    layer::Int)
+d1 = min(dep1, dep2)
+d2 = max(dep1, dep2)
+(h, v, i1, i2, newlayer) = _splitmodel(d1, d2, mdep, mvel)
+path = Int[layer]
+pol = Int[1, 1]
+np = _new_path(path, newlayer, i1, i2)
+(l, w) = _eqmodel(h, v, np, pol)
+# println("l: ", l)
+# println("w: ", w)
+v0 = (layer == 1) ? mvel[1] : max(mvel[layer-1], mvel[layer])
+# println("v0: ", v0)
+return _cal_guide(l, w, Δ, v0)
+end
+
+# * adapter
+function raytrace(dep1::Real, dep2::Real, Δ::Real, mdep::AbstractVector{<:Real}, mvel::AbstractVecOrMat{<:Real},
+                  path::AbstractVector{<:Integer}, pol::AbstractVector{<:Integer})
     return raytrace(Float64(dep1), Float64(dep2), Float64(Δ), Float64.(mdep), Float64.(mvel), Int.(path), Int.(pol))
+end
+
+function raytrace(dep1::Real, dep2::Real, Δ::Real, mdep::AbstractVector{<:Real}, mvel::AbstractVecOrMat{<:Real},
+                  path::AbstractVector{<:Integer})
+    pol = ones(Int, length(path) + 1)
+    return raytrace(Float64(dep1), Float64(dep2), Float64(Δ), Float64.(mdep), Float64.(mvel), Int.(path), pol)
+end
+
+function raytrace(dep1::Real, dep2::Real, Δ::Real, mdep::AbstractVector{<:Real}, mvel::AbstractVecOrMat{<:Real},
+                  path::AbstractVector{<:AbstractVector{<:Integer}}, pol::AbstractVector{<:AbstractVector{<:Integer}})
+    npath = Vector{Int}[]
+    npol = Vector{Int}[]
+    for i in eachindex(path)
+        push!(npath, Int.(path[i]))
+        push!(npol, Int.(pol[i]))
+    end
+    return raytrace(Float64(dep1), Float64(dep2), Float64(Δ), Float64.(mdep), Float64.(mvel), npath, npol)
+end
+
+function raytrace(dep1::Real, dep2::Real, Δ::Real, mdep::AbstractVector{<:Real}, mvel::AbstractVecOrMat{<:Real},
+                  path::AbstractVector{<:AbstractVector{<:Integer}})
+    npath = Vector{Int}[]
+    npol = Vector{Int}[]
+    for i in eachindex(path)
+        push!(npath, Int.(path[i]))
+        push!(npol, ones(Int, length(path[i]) + 1))
+    end
+    return raytrace(Float64(dep1), Float64(dep2), Float64(Δ), Float64.(mdep), Float64.(mvel), npath, npol)
+end
+
+function raytrace_guide(dep1::Real, dep2::Real, Δ::Real, mdep::AbstractVector{<:Real}, mvel::AbstractVector{<:Real},
+    layer::AbstractVector{<:Integer})
+    return raytrace_guide(Float64(dep1), Float64(dep2), Float64(Δ), Float64.(mdep), Float64.(mvel), Int.(layer))
+end
+
+function raytrace_guide(dep1::Real, dep2::Real, Δ::Real, mdep::AbstractVector{<:Real}, mvel::AbstractVector{<:Real},
+    layer::Integer)
+    return raytrace_guide(Float64(dep1), Float64(dep2), Float64(Δ), Float64.(mdep), Float64.(mvel), Int(layer))
+end
+
+function raytrace_fastest(dep1::Real, dep2::Real, Δ::Real, mdep::Vector{<:Real}, mvel::Vector{<:Real})
+    tmin = Inf
+    reflectlayer = Vector{Int}[]
+    d1 = min(dep1, dep2)
+    d2 = max(dep1, dep2)
+    for i in eachindex(mdep)
+        if (mdep[i] < d1) || (mdep[i] > d2)
+            push!(reflectlayer, Int[i])
+        end
+    end
+    phases = [raytrace(dep1, dep2, Δ, mdep, mvel, reflectlayer);
+              raytrace_guide(dep1, dep2, Δ, mdep, mvel, eachindex(mdep))]
+    for i = eachindex(phases)
+        if !isnan(phases[i].t)
+            tmin = min(tmin, phases[i].t)
+        end
+    end
+    return tmin
 end
 
 end
