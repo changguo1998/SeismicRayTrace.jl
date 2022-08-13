@@ -103,6 +103,9 @@ end
 
 function _guide_raytrace(x0::Float64, v0::Float64, h::AbstractVector, v::AbstractVector)
     p0 = _refraction_raytrace(x0, h, v)
+    if (_refraction_DpT(p0, h, v) / _refraction_DpX(p0, h, v)) <= (1.0 / v0)
+        return NaN
+    end
     p = p0
     step = 1
     global α
@@ -227,7 +230,13 @@ function _cal_time(h, v, x0)
 end
 
 function _cal_guide(h, v, x0, v0)
+    if any(>=(v0), v)
+        return (p=NaN, t=NaN, x=NaN)
+    end
     p = _guide_raytrace(x0, v0, h, v)
+    if isnan(p)
+        return (p=NaN, t=NaN, x=NaN)
+    end
     t = _guide_T(p, x0, v0, h, v)
     xt = x0
     return (p=p, t=t, x=xt)
@@ -257,34 +266,34 @@ function raytrace(dep1::Float64, dep2::Float64, Δ::Float64, mdep::Vector{Float6
 end
 
 function raytrace_guide(dep1::Float64, dep2::Float64, Δ::Float64, mdep::Vector{Float64}, mvel::Vector{Float64},
-    layer::Vector{Int})
-d1 = min(dep1, dep2)
-d2 = max(dep1, dep2)
-(h, v, i1, i2, newlayer) = _splitmodel(d1, d2, mdep, mvel)
-return map(layer) do nl
-path = Int[nl]
-pol = Int[1, 1]
-np = _new_path(path, newlayer, i1, i2)
-(l, w) = _eqmodel(h, v, np, pol)
-v0 = (nl == 1) ? mvel[1] : max(mvel[nl-1], mvel[nl])
-_cal_guide(l, w, Δ, v0)
-end
+                        layer::Vector{Int})
+    d1 = min(dep1, dep2)
+    d2 = max(dep1, dep2)
+    (h, v, i1, i2, newlayer) = _splitmodel(d1, d2, mdep, mvel)
+    return map(layer) do nl
+        path = Int[nl]
+        pol = Int[1, 1]
+        np = _new_path(path, newlayer, i1, i2)
+        (l, w) = _eqmodel(h, v, np, pol)
+        v0 = (nl == 1) ? mvel[1] : max(mvel[nl-1], mvel[nl])
+        _cal_guide(l, w, Δ, v0)
+    end
 end
 
 function raytrace_guide(dep1::Float64, dep2::Float64, Δ::Float64, mdep::Vector{Float64}, mvel::Vector{Float64},
-    layer::Int)
-d1 = min(dep1, dep2)
-d2 = max(dep1, dep2)
-(h, v, i1, i2, newlayer) = _splitmodel(d1, d2, mdep, mvel)
-path = Int[layer]
-pol = Int[1, 1]
-np = _new_path(path, newlayer, i1, i2)
-(l, w) = _eqmodel(h, v, np, pol)
-# println("l: ", l)
-# println("w: ", w)
-v0 = (layer == 1) ? mvel[1] : max(mvel[layer-1], mvel[layer])
-# println("v0: ", v0)
-return _cal_guide(l, w, Δ, v0)
+                        layer::Int)
+    d1 = min(dep1, dep2)
+    d2 = max(dep1, dep2)
+    (h, v, i1, i2, newlayer) = _splitmodel(d1, d2, mdep, mvel)
+    path = Int[layer]
+    pol = Int[1, 1]
+    np = _new_path(path, newlayer, i1, i2)
+    (l, w) = _eqmodel(h, v, np, pol)
+    # println("l: ", l)
+    # println("w: ", w)
+    v0 = (layer == 1) ? mvel[1] : max(mvel[layer-1], mvel[layer])
+    # println("v0: ", v0)
+    return _cal_guide(l, w, Δ, v0)
 end
 
 # * adapter
@@ -322,28 +331,31 @@ function raytrace(dep1::Real, dep2::Real, Δ::Real, mdep::AbstractVector{<:Real}
 end
 
 function raytrace_guide(dep1::Real, dep2::Real, Δ::Real, mdep::AbstractVector{<:Real}, mvel::AbstractVector{<:Real},
-    layer::AbstractVector{<:Integer})
+                        layer::AbstractVector{<:Integer})
     return raytrace_guide(Float64(dep1), Float64(dep2), Float64(Δ), Float64.(mdep), Float64.(mvel), Int.(layer))
 end
 
 function raytrace_guide(dep1::Real, dep2::Real, Δ::Real, mdep::AbstractVector{<:Real}, mvel::AbstractVector{<:Real},
-    layer::Integer)
+                        layer::Integer)
     return raytrace_guide(Float64(dep1), Float64(dep2), Float64(Δ), Float64.(mdep), Float64.(mvel), Int(layer))
 end
 
 function raytrace_fastest(dep1::Real, dep2::Real, Δ::Real, mdep::Vector{<:Real}, mvel::Vector{<:Real})
     tmin = Inf
     reflectlayer = Vector{Int}[]
+    gdep = Int[]
     d1 = min(dep1, dep2)
     d2 = max(dep1, dep2)
+    push!(reflectlayer, Int[])
     for i in eachindex(mdep)
         if (mdep[i] < d1) || (mdep[i] > d2)
             push!(reflectlayer, Int[i])
+            push!(gdep, i)
         end
     end
     phases = [raytrace(dep1, dep2, Δ, mdep, mvel, reflectlayer);
-              raytrace_guide(dep1, dep2, Δ, mdep, mvel, eachindex(mdep))]
-    for i = eachindex(phases)
+              raytrace_guide(dep1, dep2, Δ, mdep, mvel, gdep)]
+    for i in eachindex(phases)
         if !isnan(phases[i].t)
             tmin = min(tmin, phases[i].t)
         end
