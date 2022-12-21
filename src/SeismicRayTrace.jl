@@ -355,12 +355,24 @@ function raytrace_fastest(dep1::Real, dep2::Real, Δ::Real, mdep::Vector{<:Real}
     end
     phases = [raytrace(dep1, dep2, Δ, mdep, mvel, reflectlayer);
               raytrace_guide(dep1, dep2, Δ, mdep, mvel, gdep)]
+    tvec = Float64[]
+    idvec = Int[]
     for i in eachindex(phases)
         if !isnan(phases[i].t)
-            tmin = min(tmin, phases[i].t)
+            push!(tvec, phases[i].t)
+            push!(idvec, i)
         end
     end
-    return tmin
+    (_, mint_id) = findmin(tvec)
+    id = idvec[mint_id]
+    if id <= length(reflectlayer)
+        ptype = "reflect"
+        path = reflectlayer[id]
+    else
+        ptype = "guide"
+        path = gdep[id-length(reflectlayer)]
+    end
+    return (phase = phases[id], path=path, type=ptype)
 end
 
 end
