@@ -82,7 +82,7 @@ function _refraction_raytrace(x0::Float64, h::AbstractVector, v::AbstractVector)
     step = 1
     global α
     α0 = α
-    while abs(_refraction_X(p, h, v) - x0) > ϵ && step < MAX_STEP
+    while (abs(_refraction_X(p, h, v) - x0) > ϵ*x0) && (step < MAX_STEP)
         Δp = α0 * (x0 - _refraction_X(p, h, v)) / _refraction_DpX(p, h, v)
         if (Δp <= -p) || ((Δp + p) * maxv >= 1.0)
             α0 /= 2.0
