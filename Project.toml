@@ -1,10 +1,10 @@
 name = "SeismicRayTrace"
 uuid = "1a90cdcd-02e0-4887-85dc-4804a62d2cac"
+version = "1.0.0"
 authors = ["changguo1998 changguo1998@gmail.com"]
-version = "0.1.0"
 
 [compat]
-julia = "1.6"
+julia = "1.10"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
